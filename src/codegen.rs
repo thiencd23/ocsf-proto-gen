@@ -83,7 +83,8 @@ pub fn generate(
     } else {
         vec![
             "activity_name", "category_name", "class_name", "time", "message", "raw_data",
-            "severity", "severity_id", "time_dt", "timezone_offset", "status", "status_code", "status_detail"
+            "severity", "severity_id", "time_dt", "timezone_offset", "status", "status_code", 
+            "status_detail", "metadata", "type_name"
         ].into_iter().map(String::from).collect()
     };
 
