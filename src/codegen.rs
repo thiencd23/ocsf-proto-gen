@@ -68,7 +68,6 @@ pub fn generate(
     // Resolve which objects are needed (transitive closure via BFS).
     let needed_objects = resolve_object_graph(schema, class_names);
 
-    // Group classes by category for file organization.
     let mut classes_by_category: BTreeMap<String, Vec<&OcsfClass>> = BTreeMap::new();
     for name in class_names {
         let cls = &schema.classes[name.as_str()];
@@ -78,6 +77,13 @@ pub fn generate(
             .push(cls);
     }
 
+    let base_event_attrs: std::collections::HashSet<String> = schema
+        .classes
+        .get("base_event")
+        .map(|c| c.attributes.keys().cloned().collect())
+        .unwrap_or_default();
+
+
     // Generate event proto files per category.
     for (category, classes) in &classes_by_category {
         let events_proto = generate_events_proto(
@@ -86,8 +92,15 @@ pub fn generate(
             classes,
             &schema.objects,
             &mut stats,
+            &base_event_attrs,
         );
-        let enums_proto = generate_class_enums_proto(&version_slug, category, classes, &mut stats);
+        let enums_proto = generate_class_enums_proto(
+            &version_slug, 
+            category, 
+            classes, 
+            &mut stats, 
+            &base_event_attrs
+        );
 
         let category_dir = output_dir
             .join("ocsf")
@@ -199,6 +212,7 @@ fn generate_events_proto(
     classes: &[&OcsfClass],
     objects: &BTreeMap<String, OcsfObject>,
     stats: &mut GenerationStats,
+    base_event_attrs: &std::collections::HashSet<String>,
 ) -> String {
     let mut out = String::new();
 
@@ -224,6 +238,9 @@ fn generate_events_proto(
 
         let mut field_num = 1u32;
         for (attr_name, attr) in &cls.attributes {
+            if cls.name != "base_event" && base_event_attrs.contains(attr_name) {
+                continue;
+            }
             if attr.deprecated.is_some() {
                 stats.deprecated_fields_skipped += 1;
                 continue;
@@ -262,6 +279,7 @@ fn generate_class_enums_proto(
     category: &str,
     classes: &[&OcsfClass],
     stats: &mut GenerationStats,
+    base_event_attrs: &std::collections::HashSet<String>,
 ) -> String {
     let mut out = String::new();
 
@@ -273,6 +291,9 @@ fn generate_class_enums_proto(
         let class_upper = to_screaming_snake(&cls.name);
 
         for (attr_name, attr) in &cls.attributes {
+            if cls.name != "base_event" && base_event_attrs.contains(attr_name) {
+                continue;
+            }
             if attr.deprecated.is_some() {
                 continue;
             }
