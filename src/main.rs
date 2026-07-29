@@ -123,7 +123,18 @@ fn run(cli: Cli) -> ocsf_proto_gen::error::Result<()> {
             let class_names: Vec<String> = if classes == "all" {
                 schema.classes.keys().cloned().collect()
             } else {
-                classes.split(',').map(|s| s.trim().to_string()).collect()
+                classes
+                    .split(',')
+                    .map(|s| s.trim())
+                    .map(|s| {
+                        if let Ok(uid) = s.parse::<u32>() {
+                            if let Some(c) = schema.classes.values().find(|c| c.uid == uid) {
+                                return c.name.clone();
+                            }
+                        }
+                        s.to_string()
+                    })
+                    .collect()
             };
 
             if !quiet {
