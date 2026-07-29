@@ -81,11 +81,10 @@ pub fn generate(
     let base_event_attrs: std::collections::HashSet<String> = if let Some(custom) = custom_base_fields {
         custom.into_iter().collect()
     } else {
-        schema
-            .classes
-            .get("base_event")
-            .map(|c| c.attributes.keys().cloned().collect())
-            .unwrap_or_default()
+        vec![
+            "activity_name", "category_name", "class_name", "time", "message", "raw_data",
+            "severity", "severity_id", "time_dt", "timezone_offset", "status", "status_code", "status_detail"
+        ].into_iter().map(String::from).collect()
     };
 
 
