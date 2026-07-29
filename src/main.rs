@@ -58,6 +58,11 @@ enum Commands {
         #[arg(long, default_value = ".")]
         schema_dir: PathBuf,
 
+        /// Comma-separated list of field names that should ONLY belong to BaseEvent.
+        /// All other base fields will be generated in specific event classes.
+        #[arg(long)]
+        custom_base_fields: Option<String>,
+
         /// Suppress non-error output.
         #[arg(long, short)]
         quiet: bool,
@@ -104,6 +109,7 @@ fn run(cli: Cli) -> ocsf_proto_gen::error::Result<()> {
             classes,
             output_dir,
             schema_dir,
+            custom_base_fields,
             quiet,
         } => {
             let schema_path = schema_dir.join(&ocsf_version).join("schema.json");
@@ -141,7 +147,18 @@ fn run(cli: Cli) -> ocsf_proto_gen::error::Result<()> {
                 eprintln!("Generating protos for {} classes", class_names.len());
             }
 
-            let stats = ocsf_proto_gen::codegen::generate(&schema, &class_names, &output_dir)?;
+            let custom_base_fields = custom_base_fields.map(|s| {
+                s.split(',')
+                    .map(|f| f.trim().to_string())
+                    .collect::<Vec<String>>()
+            });
+
+            let stats = ocsf_proto_gen::codegen::generate(
+                &schema, 
+                &class_names, 
+                &output_dir,
+                custom_base_fields,
+            )?;
 
             if !quiet {
                 eprintln!(

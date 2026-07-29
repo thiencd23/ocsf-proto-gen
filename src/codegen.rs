@@ -42,6 +42,7 @@ pub fn generate(
     schema: &OcsfSchema,
     class_names: &[String],
     output_dir: &Path,
+    custom_base_fields: Option<Vec<String>>,
 ) -> Result<GenerationStats> {
     let version_slug = version_to_slug(&schema.version);
     let mut stats = GenerationStats::default();
@@ -77,11 +78,15 @@ pub fn generate(
             .push(cls);
     }
 
-    let base_event_attrs: std::collections::HashSet<String> = schema
-        .classes
-        .get("base_event")
-        .map(|c| c.attributes.keys().cloned().collect())
-        .unwrap_or_default();
+    let base_event_attrs: std::collections::HashSet<String> = if let Some(custom) = custom_base_fields {
+        custom.into_iter().collect()
+    } else {
+        schema
+            .classes
+            .get("base_event")
+            .map(|c| c.attributes.keys().cloned().collect())
+            .unwrap_or_default()
+    };
 
 
     // Generate event proto files per category.
@@ -238,8 +243,14 @@ fn generate_events_proto(
 
         let mut field_num = 1u32;
         for (attr_name, attr) in &cls.attributes {
-            if cls.name != "base_event" && base_event_attrs.contains(attr_name) {
-                continue;
+            if cls.name == "base_event" {
+                if !base_event_attrs.contains(attr_name) {
+                    continue;
+                }
+            } else {
+                if base_event_attrs.contains(attr_name) {
+                    continue;
+                }
             }
             if attr.deprecated.is_some() {
                 stats.deprecated_fields_skipped += 1;
@@ -291,8 +302,14 @@ fn generate_class_enums_proto(
         let class_upper = to_screaming_snake(&cls.name);
 
         for (attr_name, attr) in &cls.attributes {
-            if cls.name != "base_event" && base_event_attrs.contains(attr_name) {
-                continue;
+            if cls.name == "base_event" {
+                if !base_event_attrs.contains(attr_name) {
+                    continue;
+                }
+            } else {
+                if base_event_attrs.contains(attr_name) {
+                    continue;
+                }
             }
             if attr.deprecated.is_some() {
                 continue;

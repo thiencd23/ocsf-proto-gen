@@ -24,6 +24,7 @@
 //!     &schema,
 //!     &["authentication".to_string(), "security_finding".to_string()],
 //!     Path::new("output/"),
+//!     None,
 //! )?;
 //! eprintln!("Generated {} classes, {} objects", stats.classes_generated, stats.objects_generated);
 //! # Ok::<(), ocsf_proto_gen::error::Error>(())
