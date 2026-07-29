@@ -31,7 +31,7 @@ enum Commands {
         /// Base URL for the OCSF schema export API.
         #[arg(
             long,
-            default_value = "https://schema.ocsf.io/export/schema",
+            default_value = "https://schema.ocsf.io/export/v2/schema",
             env = "OCSF_SCHEMA_URL"
         )]
         schema_url: String,

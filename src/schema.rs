@@ -141,9 +141,10 @@ pub struct OcsfAttribute {
     #[serde(default)]
     pub sibling: Option<String>,
 
-    /// Profile that contributed this attribute (e.g., `"cloud"`, `"security_control"`).
+    /// Profile(s) that contributed this attribute. Legacy format uses `profile: String`, v2 uses `profiles: [String]`.
+    #[serde(alias = "profiles")]
     #[serde(default)]
-    pub profile: Option<String>,
+    pub profile: Option<serde_json::Value>,
 
     /// Enum value definitions. Keys are either integer strings (`"0"`, `"1"`, `"99"`)
     /// for true proto enums, or string labels (`"GET"`, `"POST"`) for documented
