@@ -365,7 +365,7 @@ fn end_to_end_generate_and_validate() {
     let schema = test_schema();
     let dir = tempdir();
 
-    let stats = codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![]))
+    let stats = codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![]), false)
         .expect("generation should succeed");
 
     // Verify stats.
@@ -388,7 +388,7 @@ fn generated_proto_has_correct_content() {
     let schema = test_schema();
     let dir = tempdir();
 
-    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![])).unwrap();
+    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![]), false).unwrap();
 
     let proto = std::fs::read_to_string(dir.join("ocsf/v1_7_0/events/iam/iam.proto")).unwrap();
 
@@ -429,7 +429,7 @@ fn generated_enums_have_correct_values() {
     let schema = test_schema();
     let dir = tempdir();
 
-    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![])).unwrap();
+    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![]), false).unwrap();
 
     let enums =
         std::fs::read_to_string(dir.join("ocsf/v1_7_0/events/iam/enums/enums.proto")).unwrap();
@@ -460,7 +460,7 @@ fn generated_objects_have_correct_fields() {
     let schema = test_schema();
     let dir = tempdir();
 
-    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![])).unwrap();
+    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![]), false).unwrap();
 
     let objects = std::fs::read_to_string(dir.join("ocsf/v1_7_0/objects/objects.proto")).unwrap();
 
@@ -483,7 +483,7 @@ fn enum_value_map_is_valid_json() {
     let schema = test_schema();
     let dir = tempdir();
 
-    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![])).unwrap();
+    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![]), false).unwrap();
 
     let json_str = std::fs::read_to_string(dir.join("ocsf/v1_7_0/enum-value-map.json")).unwrap();
     let map: serde_json::Value = serde_json::from_str(&json_str).unwrap();
@@ -503,8 +503,8 @@ fn deterministic_output() {
     let dir_a = tempdir();
     let dir_b = tempdir();
 
-    codegen::generate(&schema, &["authentication".to_string()], &dir_a, Some(vec![])).unwrap();
-    codegen::generate(&schema, &["authentication".to_string()], &dir_b, Some(vec![])).unwrap();
+    codegen::generate(&schema, &["authentication".to_string()], &dir_a, Some(vec![]), false).unwrap();
+    codegen::generate(&schema, &["authentication".to_string()], &dir_b, Some(vec![]), false).unwrap();
 
     // Compare all generated files byte-for-byte.
     for entry in walkdir(&dir_a) {
@@ -520,7 +520,7 @@ fn invalid_class_name_returns_error() {
     let schema = test_schema();
     let dir = tempdir();
 
-    let result = codegen::generate(&schema, &["nonexistent_class".to_string()], &dir, Some(vec![]));
+    let result = codegen::generate(&schema, &["nonexistent_class".to_string()], &dir, Some(vec![]), false);
     assert!(result.is_err());
     let err = result.unwrap_err().to_string();
     assert!(err.contains("nonexistent_class"));
@@ -554,7 +554,7 @@ fn empty_object_type_emits_string() {
     let schema = test_schema();
     let dir = tempdir();
 
-    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![])).unwrap();
+    codegen::generate(&schema, &["authentication".to_string()], &dir, Some(vec![]), false).unwrap();
 
     let proto = std::fs::read_to_string(dir.join("ocsf/v1_7_0/events/iam/iam.proto")).unwrap();
 

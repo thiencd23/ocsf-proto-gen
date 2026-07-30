@@ -1,7 +1,13 @@
 use std::path::PathBuf;
 use std::process;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+#[derive(ValueEnum, Clone, Debug, PartialEq)]
+pub enum Format {
+    Nested,
+    Flat,
+}
 
 /// Generate Protocol Buffer definitions from OCSF JSON schema.
 ///
@@ -63,6 +69,11 @@ enum Commands {
         #[arg(long)]
         custom_base_fields: Option<String>,
 
+        /// Output format: "nested" (default) generates individual class protos,
+        /// "flat" generates a single OcsfEvent message containing all fields.
+        #[arg(long, value_enum, default_value_t = Format::Nested)]
+        format: Format,
+
         /// Suppress non-error output.
         #[arg(long, short)]
         quiet: bool,
@@ -110,6 +121,7 @@ fn run(cli: Cli) -> ocsf_proto_gen::error::Result<()> {
             output_dir,
             schema_dir,
             custom_base_fields,
+            format,
             quiet,
         } => {
             let schema_path = schema_dir.join(&ocsf_version).join("schema.json");
@@ -158,6 +170,7 @@ fn run(cli: Cli) -> ocsf_proto_gen::error::Result<()> {
                 &class_names, 
                 &output_dir,
                 custom_base_fields,
+                format == Format::Flat,
             )?;
 
             if !quiet {

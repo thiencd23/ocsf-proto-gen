@@ -43,6 +43,7 @@ pub fn generate(
     class_names: &[String],
     output_dir: &Path,
     custom_base_fields: Option<Vec<String>>,
+    flat_format: bool,
 ) -> Result<GenerationStats> {
     let version_slug = version_to_slug(&schema.version);
     let mut stats = GenerationStats::default();
@@ -89,52 +90,83 @@ pub fn generate(
     };
 
 
-    // Generate event proto files per category.
-    for (category, classes) in &classes_by_category {
-        let events_proto = generate_events_proto(
-            &version_slug,
-            category,
-            classes,
-            &schema.objects,
-            &mut stats,
-            &base_event_attrs,
-        );
-        let enums_proto = generate_class_enums_proto(
-            &version_slug, 
-            category, 
-            classes, 
-            &mut stats, 
-            &base_event_attrs
-        );
-
-        let category_dir = output_dir
-            .join("ocsf")
-            .join(&version_slug)
-            .join("events")
-            .join(category);
-        write_file(
-            &category_dir.join(format!("{category}.proto")),
-            &events_proto,
-        )?;
-        write_file(
-            &category_dir.join("enums").join("enums.proto"),
-            &enums_proto,
-        )?;
-    }
     stats.classes_generated = class_names.len();
 
-    // Generate shared objects proto.
-    let objects_proto = generate_objects_proto(&version_slug, schema, &needed_objects, &mut stats);
-    let object_enums_proto =
-        generate_object_enums_proto(&version_slug, schema, &needed_objects, &mut stats);
+    if flat_format {
+        let enums_proto = generate_flat_enums_proto(
+            &version_slug,
+            &schema,
+            &class_names,
+            &needed_objects,
+            &mut stats,
+        );
+        let events_proto = generate_flat_events_proto(
+            &version_slug,
+            &schema.classes,
+            &class_names,
+            &schema.objects,
+            &mut stats,
+        );
+        let objects_proto = generate_flat_objects_proto(
+            &version_slug, 
+            schema, 
+            &needed_objects, 
+            &mut stats
+        );
 
-    let objects_dir = output_dir.join("ocsf").join(&version_slug).join("objects");
-    write_file(&objects_dir.join("objects.proto"), &objects_proto)?;
-    write_file(
-        &objects_dir.join("enums").join("enums.proto"),
-        &object_enums_proto,
-    )?;
-    stats.objects_generated = needed_objects.len();
+        let root_dir = output_dir.join("ocsf").join(&version_slug);
+        write_file(&root_dir.join("enums.proto"), &enums_proto)?;
+        write_file(&root_dir.join("events.proto"), &events_proto)?;
+        write_file(&root_dir.join("objects.proto"), &objects_proto)?;
+    } else {
+        // Generate event proto files per category.
+        for (category, classes) in &classes_by_category {
+            let events_proto = generate_events_proto(
+                &version_slug,
+                category,
+                classes,
+                &schema.objects,
+                &mut stats,
+                &base_event_attrs,
+            );
+            let enums_proto = generate_class_enums_proto(
+                &version_slug, 
+                category, 
+                classes, 
+                &mut stats, 
+                &base_event_attrs
+            );
+
+            let category_dir = output_dir
+                .join("ocsf")
+                .join(&version_slug)
+                .join("events")
+                .join(category);
+            write_file(
+                &category_dir.join(format!("{category}.proto")),
+                &events_proto,
+            )?;
+            write_file(
+                &category_dir.join("enums").join("enums.proto"),
+                &enums_proto,
+            )?;
+        }
+    }
+
+    if !flat_format {
+        // Generate shared objects proto.
+        let objects_proto = generate_objects_proto(&version_slug, schema, &needed_objects, &mut stats);
+        let object_enums_proto =
+            generate_object_enums_proto(&version_slug, schema, &needed_objects, &mut stats);
+
+        let objects_dir = output_dir.join("ocsf").join(&version_slug).join("objects");
+        write_file(&objects_dir.join("objects.proto"), &objects_proto)?;
+        write_file(
+            &objects_dir.join("enums").join("enums.proto"),
+            &object_enums_proto,
+        )?;
+        stats.objects_generated = needed_objects.len();
+    }
 
     // Generate enum-value-map.json reference.
     let enum_map = generate_enum_value_map(schema, class_names, &needed_objects)?;
@@ -281,6 +313,106 @@ fn generate_events_proto(
     }
 
     out
+}
+
+fn generate_flat_events_proto(
+    version_slug: &str,
+    classes_map: &std::collections::BTreeMap<String, crate::schema::OcsfClass>,
+    class_names: &[String],
+    objects: &BTreeMap<String, OcsfObject>,
+    stats: &mut GenerationStats,
+) -> String {
+    let mut out = String::new();
+
+    writeln!(out, "syntax = \"proto3\";").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "package ocsf.{version_slug}.events;").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "import \"ocsf/{version_slug}/objects.proto\";").unwrap();
+    writeln!(out, "import \"ocsf/{version_slug}/enums.proto\";").unwrap();
+    writeln!(out).unwrap();
+
+    writeln!(out, "message OcsfEvent {{").unwrap();
+    
+    // Collect unique attributes
+    let mut unique_attrs: BTreeMap<String, &crate::schema::OcsfAttribute> = BTreeMap::new();
+    for name in class_names {
+        if let Some(cls) = classes_map.get(name.as_str()) {
+            for (attr_name, attr) in &cls.attributes {
+                if attr.deprecated.is_some() { continue; }
+                unique_attrs.insert(attr_name.clone(), attr);
+            }
+        }
+    }
+
+    let top_fields = vec![
+        "class_uid", "class_name", "category_uid", "category_name",
+        "activity_id", "activity_name", "type_uid", "type_name",
+        "severity_id", "severity", "time", "time_dt", "timezone_offset",
+        "status_id", "status", "status_code", "status_detail",
+        "message", "metadata"
+    ];
+
+    // 1. Write the top fields first (IDs 20..)
+    let mut field_num = 20u32;
+    for attr_name in &top_fields {
+        if let Some(attr) = unique_attrs.get(*attr_name) {
+            write_flat_event_field(&mut out, attr_name, attr, version_slug, objects, repeated_kw_fn, stats, field_num);
+            field_num += 1;
+        }
+    }
+
+    // 2. Write the rest of the fields (IDs 100..)
+    field_num = 100;
+    for (attr_name, attr) in &unique_attrs {
+        if top_fields.contains(&attr_name.as_str()) { continue; }
+        write_flat_event_field(&mut out, attr_name, attr, version_slug, objects, repeated_kw_fn, stats, field_num);
+        field_num += 1;
+    }
+
+    writeln!(out, "}}").unwrap();
+    out
+}
+
+fn write_flat_event_field(
+    out: &mut String,
+    attr_name: &str,
+    attr: &crate::schema::OcsfAttribute,
+    version_slug: &str,
+    objects: &BTreeMap<String, OcsfObject>,
+    repeated_kw_fn: fn(bool) -> &'static str,
+    stats: &mut GenerationStats,
+    field_num: u32,
+) {
+    let repeated = attr.is_array;
+    let mut proto_type = "string".to_string();
+
+    if attr.type_name == "object_t" {
+        let (_, obj_type) = resolve_object_ref(attr, version_slug, objects, repeated, stats);
+        proto_type = obj_type;
+    } else if let Some(enum_vals) = &attr.enum_values {
+        if is_integer_enum(enum_vals) {
+            proto_type = "int32".to_string();
+        } else {
+            stats.string_enum_fields_skipped += 1;
+        }
+    } else {
+        proto_type = ocsf_to_proto_type(&attr.type_name).unwrap_or_else(|| {
+            stats.unknown_types_defaulted += 1;
+            "string"
+        }).to_string();
+    }
+
+    let repeated_kw = repeated_kw_fn(repeated);
+    writeln!(
+        out,
+        "\t{repeated_kw}{proto_type} {attr_name} = {field_num}; // Caption: {};",
+        attr.caption
+    ).unwrap();
+}
+
+fn repeated_kw_fn(repeated: bool) -> &'static str {
+    if repeated { "repeated " } else { "" }
 }
 
 // ── Class enum generation ──────────────────────────────────────────────
@@ -435,6 +567,122 @@ fn generate_object_enums_proto(
         }
     }
 
+    out
+}
+
+fn generate_flat_enums_proto(
+    version_slug: &str,
+    schema: &OcsfSchema,
+    class_names: &[String],
+    needed_objects: &BTreeSet<String>,
+    stats: &mut GenerationStats,
+) -> String {
+    let mut out = String::new();
+
+    writeln!(out, "syntax = \"proto3\";").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "package ocsf.{version_slug}.enums;").unwrap();
+
+    for name in class_names {
+        if let Some(cls) = schema.classes.get(name.as_str()) {
+            let class_upper = to_screaming_snake(&cls.name);
+            for (attr_name, attr) in &cls.attributes {
+                if attr.deprecated.is_some() { continue; }
+                let Some(enum_vals) = &attr.enum_values else { continue; };
+                if !is_integer_enum(enum_vals) { continue; }
+
+                let attr_upper = to_screaming_snake(attr_name);
+                let enum_name = format!("{class_upper}_{attr_upper}");
+                write_enum_definition(&mut out, &enum_name, enum_vals);
+                stats.enums_generated += 1;
+            }
+        }
+    }
+
+    for obj_name in needed_objects {
+        let obj = lookup_object(schema, obj_name);
+        let Some(obj) = obj else { continue; };
+        let obj_upper = to_screaming_snake(obj_name);
+
+        for (attr_name, attr) in &obj.attributes {
+            if attr.deprecated.is_some() { continue; }
+            let Some(enum_vals) = &attr.enum_values else { continue; };
+            if !is_integer_enum(enum_vals) { continue; }
+
+            let attr_upper = to_screaming_snake(attr_name);
+            let enum_name = format!("{obj_upper}_{attr_upper}");
+            write_enum_definition(&mut out, &enum_name, enum_vals);
+            stats.enums_generated += 1;
+        }
+    }
+
+    out
+}
+
+fn generate_flat_objects_proto(
+    version_slug: &str,
+    schema: &OcsfSchema,
+    needed_objects: &BTreeSet<String>,
+    stats: &mut GenerationStats,
+) -> String {
+    let mut out = String::new();
+
+    writeln!(out, "syntax = \"proto3\";").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "package ocsf.{version_slug}.objects;").unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "import \"ocsf/{version_slug}/enums.proto\";"
+    )
+    .unwrap();
+
+    for obj_name in needed_objects {
+        let obj = lookup_object(schema, obj_name);
+        let Some(obj) = obj else {
+            eprintln!("warning: object '{obj_name}' referenced but not found in schema");
+            continue;
+        };
+        let obj_upper = to_screaming_snake(obj_name);
+
+        writeln!(out).unwrap();
+        writeln!(out, "message {} {{", to_pascal_case(obj_name)).unwrap();
+
+        let mut field_num = 1u32;
+        for (attr_name, attr) in &obj.attributes {
+            if attr.deprecated.is_some() {
+                stats.deprecated_fields_skipped += 1;
+                continue;
+            }
+
+            let (repeated, mut proto_type) = resolve_object_field_type(
+                attr,
+                attr_name,
+                &obj_upper,
+                version_slug,
+                &schema.objects,
+                stats,
+            );
+            
+            // In flat mode, the enum package is just enums
+            if proto_type.contains(".objects.enums.") {
+                proto_type = proto_type.replace(".objects.enums.", ".enums.");
+            }
+
+            let repeated_kw = if repeated { "repeated " } else { "" };
+
+            writeln!(
+                out,
+                "\t{repeated_kw}{proto_type} {attr_name} = {field_num}; // Caption: {};",
+                attr.caption
+            )
+            .unwrap();
+            field_num += 1;
+        }
+
+        writeln!(out, "}}").unwrap();
+    }
+    stats.objects_generated += needed_objects.len();
     out
 }
 
